@@ -1,8 +1,8 @@
 Summary: QPid QMF interface to Libvirt
 Name: libvirt-qpid
-Version: 0.2.20
-Release: 1%{?dist}
-Source: libvirt-qpid-%{version}.tar.gz
+Version: 0.2.22
+Release: 3%{?dist}
+Source: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
 License: LGPLv2+
 Group: Applications/System
@@ -73,6 +73,16 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Thu May  5 2011 Daniel P. Berrange <berrange@redhat.com> - 0.2.22-3
+- Add fix for parallel make race condition
+- Add missing qpidtypes link flag
+
+* Thu May  5 2011 Daniel P. Berrange <berrange@redhat.com>
+- Rebuild for QPid soname change
+
+* Tue Feb 08 2011 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 0.2.22-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_15_Mass_Rebuild
+
 * Tue Jul 6 2010 Ian Main <imain@redhat.com> - 0.2.22-1
 - Init script fixes.
 
