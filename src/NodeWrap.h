@@ -1,60 +1,70 @@
+#ifndef NODE_WRAP_H
+#define NODE_WRAP_H
 
-#include <qpid/management/Manageable.h>
-#include <qpid/management/ManagementObject.h>
-#include <qpid/agent/ManagementAgent.h>
-#include <qpid/client/ConnectionSettings.h>
-#include <qpid/sys/Mutex.h>
-
-#include "Package.h"
-#include "Node.h"
-#include "Domain.h"
-#include "Pool.h"
+#include "ManagedObject.h"
+#include "QmfPackage.h"
 
 #include <unistd.h>
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
 #include <sstream>
 
 #include <libvirt/libvirt.h>
 #include <libvirt/virterror.h>
 
-using namespace qpid::management;
-using namespace qpid::sys;
-using namespace std;
-using qpid::management::ManagementObject;
-using qpid::management::Manageable;
-using qpid::management::Args;
-using qpid::sys::Mutex;
 
-// Forward decl of DomainWrap to get around cyclic reference.
 class DomainWrap;
 class PoolWrap;
 
-class NodeWrap : public Manageable
+class NodeWrap:
+    public PackageOwner<qmf::com::redhat::libvirt::PackageDefinition>,
+    public ManagedObject
 {
-    string name;
-    ManagementAgent *agent;
-    qmf::com::redhat::libvirt::Node *mgmtObject;
-    std::vector<DomainWrap*> domains;
-    std::vector<PoolWrap*> pools;
+    typedef std::vector<DomainWrap*> DomainList;
+    typedef std::vector<PoolWrap*> PoolList;
 
-    virConnectPtr conn;
+    DomainList _domains;
+    PoolList _pools;
+
+    virConnectPtr _conn;
+
+    qmf::AgentSession& _session;
+    PackageDefinition& _package;
 
 public:
-
-    NodeWrap(ManagementAgent* agent, string _name);
+    NodeWrap(qmf::AgentSession& agent_session, PackageDefinition& package);
     ~NodeWrap();
 
-    ManagementObject* GetManagementObject(void) const
-    { return mgmtObject; }
-
     void doLoop();
-    void syncDomains();
-    void checkPool(char *pool_name);
-    void syncPools();
 
-    status_t ManagementMethod (uint32_t methodId, Args& args, std::string &errstr);
+    bool handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event);
+
+    virtual PackageDefinition& package(void) { return _package; }
+
+    virtual void addData(qmf::Data& data) {
+        _session.addData(data);
+    }
+
+    virtual void delData(qmf::Data& data) {
+        _session.delData(data.getAddr());
+    }
+
+protected:
+    void syncDomains(void);
+    void syncPools(void);
+    void checkPool(char *pool_name);
+
+    bool domainDefineXML(qmf::AgentSession& session,
+                         qmf::AgentEvent& event);
+    bool storagePoolDefineXML(qmf::AgentSession& session,
+                              qmf::AgentEvent& event);
+    bool storagePoolCreateXML(qmf::AgentSession& session,
+                              qmf::AgentEvent& event);
+    bool findStoragePoolSources(qmf::AgentSession& session,
+                                qmf::AgentEvent& event);
 };
 
+#endif
 

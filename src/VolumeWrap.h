@@ -1,10 +1,7 @@
-#include <qpid/management/Manageable.h>
-#include <qpid/management/ManagementObject.h>
-#include <qpid/agent/ManagementAgent.h>
-#include <qpid/sys/Mutex.h>
+#ifndef VOLUME_WRAP_H
+#define VOLUME_WRAP_H
 
-#include "Package.h"
-#include "Volume.h"
+#include "PoolWrap.h"
 
 #include <unistd.h>
 #include <cstdlib>
@@ -15,51 +12,36 @@
 #include <libvirt/libvirt.h>
 #include <libvirt/virterror.h>
 
-using namespace qpid::management;
-using namespace qpid::sys;
-using namespace std;
-using qpid::management::ManagementObject;
-using qpid::management::Manageable;
-using qpid::management::Args;
-using qpid::sys::Mutex;
 
-// Forward decl.
-class PoolWrap;
-
-class VolumeWrap : public Manageable
+class VolumeWrap:
+    PackageOwner<PoolWrap::PackageDefinition>,
+    public ManagedObject
 {
-    ManagementAgent *agent;
-    qmf::com::redhat::libvirt::Volume *volume;
+    virStorageVolPtr _volume_ptr;
+    virConnectPtr _conn;
 
-    std::string volume_key;
-    std::string volume_path;
+    std::string _volume_name;
+    std::string _volume_key;
+    std::string _volume_path;
 
-    std::string lvm_name;
-    bool has_lvm_child;
+    std::string _lvm_name;
+    bool _has_lvm_child;
 
-    virConnectPtr conn;
-    virStorageVolPtr volume_ptr;
-
-    PoolWrap *wrap_parent;
+    PoolWrap *_wrap_parent;
 
     void checkForLVMPool();
 
 public:
-
-    std::string volume_name;
-
-    VolumeWrap(ManagementAgent *agent, PoolWrap *parent, virStorageVolPtr pool_ptr, virConnectPtr connect);
+    VolumeWrap(PoolWrap *parent,
+               virStorageVolPtr volume_ptr,
+               virConnectPtr connect);
     ~VolumeWrap();
 
-    ManagementObject* GetManagementObject(void) const
-    {
-        return volume;
-    }
+    const char *name(void) { return _volume_name.c_str(); }
 
     void update();
 
-    status_t ManagementMethod (uint32_t methodId, Args& args, std::string &errstr);
+    bool handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event);
 };
 
-
-
+#endif

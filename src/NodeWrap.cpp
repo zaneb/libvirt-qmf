@@ -6,20 +6,19 @@
 #include <getopt.h>
 #include <syslog.h>
 #include <signal.h>
+#include <cstdio>
 
 #include "NodeWrap.h"
 #include "DomainWrap.h"
 #include "PoolWrap.h"
 #include "Error.h"
+#include "Exception.h"
 
-#include "ArgsNodeDomainDefineXML.h"
-#include "ArgsNodeStoragePoolCreateXML.h"
-#include "ArgsNodeStoragePoolDefineXML.h"
-#include "ArgsNodeFindStoragePoolSources.h"
 
-namespace _qmf = qmf::com::redhat::libvirt;
-
-NodeWrap::NodeWrap(ManagementAgent* _agent, string _name) : name(_name), agent(_agent)
+NodeWrap::NodeWrap(qmf::AgentSession& agent_session, PackageDefinition& package):
+    ManagedObject(package.data_Node),
+    _session(agent_session),
+    _package(package)
 {
     virNodeInfo info;
     char *hostname;
@@ -36,33 +35,33 @@ NodeWrap::NodeWrap(ManagementAgent* _agent, string _name) : name(_name), agent(_
     unsigned int minor;
     unsigned int rel;
 
-    conn = virConnectOpen(NULL);
-    if (!conn) {
-        REPORT_ERR(conn, "virConnectOpen");
+    _conn = virConnectOpen(NULL);
+    if (!_conn) {
+        REPORT_ERR(_conn, "virConnectOpen");
         throw -1;
     }
 
-    hostname = virConnectGetHostname(conn);
+    hostname = virConnectGetHostname(_conn);
     if (hostname == NULL) {
-        REPORT_ERR(conn, "virConnectGetHostname");
+        REPORT_ERR(_conn, "virConnectGetHostname");
         throw -1;
     }
 
-    hv_type = virConnectGetType(conn);
+    hv_type = virConnectGetType(_conn);
     if (hv_type == NULL) {
-        REPORT_ERR(conn, "virConnectGetType");
+        REPORT_ERR(_conn, "virConnectGetType");
         throw -1;
     }
 
-    uri = virConnectGetURI(conn);
+    uri = virConnectGetURI(_conn);
     if (uri == NULL) {
-        REPORT_ERR(conn, "virConnectGetURI");
+        REPORT_ERR(_conn, "virConnectGetURI");
         throw -1;
     }
 
     ret = virGetVersion(&libvirt_v, hv_type, &api_v);
     if (ret < 0) {
-        REPORT_ERR(conn, "virGetVersion");
+        REPORT_ERR(_conn, "virGetVersion");
     } else {
         major = libvirt_v / 1000000;
         libvirt_v %= 1000000;
@@ -77,9 +76,9 @@ NodeWrap::NodeWrap(ManagementAgent* _agent, string _name) : name(_name), agent(_
         snprintf(api_version, sizeof(api_version), "%d.%d.%d", major, minor, rel);
     }
 
-    ret = virConnectGetVersion(conn, &hv_v);
+    ret = virConnectGetVersion(_conn, &hv_v);
     if (ret < 0) {
-        REPORT_ERR(conn, "virConnectGetVersion");
+        REPORT_ERR(_conn, "virConnectGetVersion");
     } else {
         major = hv_v / 1000000;
         hv_v %= 1000000;
@@ -88,48 +87,64 @@ NodeWrap::NodeWrap(ManagementAgent* _agent, string _name) : name(_name), agent(_
         snprintf(hv_version, sizeof(hv_version), "%d.%d.%d", major, minor, rel);
     }
 
-    ret = virNodeGetInfo(conn, &info);
+    ret = virNodeGetInfo(_conn, &info);
     if (ret < 0) {
-        REPORT_ERR(conn, "virNodeGetInfo");
+        REPORT_ERR(_conn, "virNodeGetInfo");
         memset((void *) &info, sizeof(info), 1);
     }
 
-    mgmtObject = new _qmf::Node(agent, this, hostname, uri, libvirt_version, api_version, hv_version, hv_type,
-                                info.model, info.memory, info.cpus, info.mhz, info.nodes, info.sockets,
-                                info.cores, info.threads);
-    agent->addObject(mgmtObject);
+
+    _data.setProperty("hostname", hostname);
+    _data.setProperty("uri", uri);
+    _data.setProperty("libvirtVersion", libvirt_version);
+    _data.setProperty("apiVersion", api_version);
+    _data.setProperty("hypervisorVersion", hv_version);
+    _data.setProperty("hypervisorType", hv_type);
+
+    _data.setProperty("model", info.model);
+    _data.setProperty("memory", info.memory);
+    _data.setProperty("cpus", info.cpus);
+    _data.setProperty("mhz", info.mhz);
+    _data.setProperty("nodes", info.nodes);
+    _data.setProperty("sockets", info.sockets);
+    _data.setProperty("cores", info.cores);
+    _data.setProperty("threads", info.threads);
+
+    addData(_data);
 }
 
 NodeWrap::~NodeWrap()
 {
     /* Go through our list of pools and destroy them all! MOOOHAHAHA */
-    for (std::vector<PoolWrap*>::iterator iter = pools.begin(); iter != pools.end();) {
-        delete(*iter);
-        iter = pools.erase(iter);
+    PoolList::iterator iter_p = _pools.begin();
+    while (iter_p != _pools.end()) {
+        delete *iter_p;
+        iter_p = _pools.erase(iter_p);
     }
 
     /* Same for domains.. */
-    for (std::vector<DomainWrap*>::iterator iter = domains.begin(); iter != domains.end();) {
-        delete (*iter);
-        iter = domains.erase(iter);
+    DomainList::iterator iter_d = _domains.begin();
+    while (iter_d != _domains.end()) {
+        delete *iter_d;
+        iter_d = _domains.erase(iter_d);
     }
 
-    mgmtObject->resourceDestroy();
+    delData(_data);
 }
 
-void NodeWrap::syncDomains()
+void NodeWrap::syncDomains(void)
 {
     /* Sync up with domains that are defined but not active. */
-    int maxname = virConnectNumOfDefinedDomains(conn);
+    int maxname = virConnectNumOfDefinedDomains(_conn);
     if (maxname < 0) {
-        REPORT_ERR(conn, "virConnectNumOfDefinedDomains");
+        REPORT_ERR(_conn, "virConnectNumOfDefinedDomains");
         return;
     } else {
         char **dnames;
         dnames = (char **) malloc(sizeof(char *) * maxname);
 
-        if ((maxname = virConnectListDefinedDomains(conn, dnames, maxname)) < 0) {
-            REPORT_ERR(conn, "virConnectListDefinedDomains");
+        if ((maxname = virConnectListDefinedDomains(_conn, dnames, maxname)) < 0) {
+            REPORT_ERR(_conn, "virConnectListDefinedDomains");
             free(dnames);
             return;
         }
@@ -139,9 +154,9 @@ void NodeWrap::syncDomains()
             virDomainPtr domain_ptr;
 
             bool found = false;
-            for (std::vector<DomainWrap*>::iterator iter = domains.begin();
-                    iter != domains.end(); iter++) {
-                if ((*iter)->domain_name == dnames[i]) {
+            for (DomainList::iterator iter = _domains.begin();
+                    iter != _domains.end(); iter++) {
+                if ((*iter)->name() == dnames[i]) {
                     found = true;
                     break;
                 }
@@ -151,18 +166,18 @@ void NodeWrap::syncDomains()
                 continue;
             }
 
-            domain_ptr = virDomainLookupByName(conn, dnames[i]);
+            domain_ptr = virDomainLookupByName(_conn, dnames[i]);
             if (!domain_ptr) {
-                REPORT_ERR(conn, "virDomainLookupByName");
+                REPORT_ERR(_conn, "virDomainLookupByName");
             } else {
                 DomainWrap *domain;
                 try {
-                    domain = new DomainWrap(agent, this, domain_ptr, conn);
+                    domain = new DomainWrap(this, domain_ptr, _conn);
                     printf("Created new domain: %s, ptr is %p\n", dnames[i], domain_ptr);
-                    domains.push_back(domain);
+                    _domains.push_back(domain);
                 } catch (int i) {
-                    printf ("Error constructing domain\n");
-                    REPORT_ERR(conn, "constructing domain.");
+                    printf("Error constructing domain\n");
+                    REPORT_ERR(_conn, "constructing domain.");
                     delete domain;
                 }
             }
@@ -175,15 +190,15 @@ void NodeWrap::syncDomains()
     }
 
     /* Go through all the active domains */
-    int maxids = virConnectNumOfDomains(conn);
+    int maxids = virConnectNumOfDomains(_conn);
     if (maxids < 0) {
-        REPORT_ERR(conn, "virConnectNumOfDomains");
+        REPORT_ERR(_conn, "virConnectNumOfDomains");
         return;
     } else {
         int *ids;
         ids = (int *) malloc(sizeof(int *) * maxids);
 
-        if ((maxids = virConnectListDomains(conn, ids, maxids)) < 0) {
+        if ((maxids = virConnectListDomains(_conn, ids, maxids)) < 0) {
             printf("Error getting list of defined domains\n");
             return;
         }
@@ -192,21 +207,21 @@ void NodeWrap::syncDomains()
             virDomainPtr domain_ptr;
             char dom_uuid[VIR_UUID_STRING_BUFLEN];
 
-            domain_ptr = virDomainLookupByID(conn, ids[i]);
+            domain_ptr = virDomainLookupByID(_conn, ids[i]);
             if (!domain_ptr) {
-                REPORT_ERR(conn, "virDomainLookupByID");
+                REPORT_ERR(_conn, "virDomainLookupByID");
                 continue;
             }
 
             if (virDomainGetUUIDString(domain_ptr, dom_uuid) < 0) {
-                REPORT_ERR(conn, "virDomainGetUUIDString");
+                REPORT_ERR(_conn, "virDomainGetUUIDString");
                 continue;
             }
 
             bool found = false;
-            for (std::vector<DomainWrap*>::iterator iter = domains.begin();
-                    iter != domains.end(); iter++) {
-                if (strcmp((*iter)->domain_uuid.c_str(), dom_uuid) == 0) {
+            for (DomainList::iterator iter = _domains.begin();
+                    iter != _domains.end(); iter++) {
+                if (strcmp((*iter)->uuid().c_str(), dom_uuid) == 0) {
                     found = true;
                     break;
                 }
@@ -219,12 +234,12 @@ void NodeWrap::syncDomains()
 
             DomainWrap *domain;
             try {
-                domain = new DomainWrap(agent, this, domain_ptr, conn);
+                domain = new DomainWrap(this, domain_ptr, _conn);
                 printf("Created new domain: %d, ptr is %p\n", ids[i], domain_ptr);
-                domains.push_back(domain);
+                _domains.push_back(domain);
             } catch (int i) {
-                printf ("Error constructing domain\n");
-                REPORT_ERR(conn, "constructing domain.");
+                printf("Error constructing domain\n");
+                REPORT_ERR(_conn, "constructing domain.");
                 delete domain;
             }
         }
@@ -233,14 +248,14 @@ void NodeWrap::syncDomains()
     }
 
     /* Go through our list of domains and ensure that they still exist. */
-    for (std::vector<DomainWrap*>::iterator iter = domains.begin(); iter != domains.end();) {
-
-        printf("verifying domain %s\n", (*iter)->domain_name.c_str());
-        virDomainPtr ptr = virDomainLookupByUUIDString(conn, (*iter)->domain_uuid.c_str());
+    DomainList::iterator iter = _domains.begin();
+    while (iter != _domains.end()) {
+        printf("verifying domain %s\n", (*iter)->name().c_str());
+        virDomainPtr ptr = virDomainLookupByUUIDString(_conn, (*iter)->uuid().c_str());
         if (ptr == NULL) {
-            REPORT_ERR(conn, "virDomainLookupByUUIDString");
+            REPORT_ERR(_conn, "virDomainLookupByUUIDString");
             delete (*iter);
-            iter = domains.erase(iter);
+            iter = _domains.erase(iter);
         } else {
             virDomainFree(ptr);
             iter++;
@@ -253,9 +268,9 @@ void NodeWrap::checkPool(char *pool_name)
     virStoragePoolPtr pool_ptr;
 
     bool found = false;
-    for (std::vector<PoolWrap*>::iterator iter = pools.begin();
-            iter != pools.end(); iter++) {
-        if ((*iter)->pool_name == pool_name) {
+    for (PoolList::iterator iter = _pools.begin();
+            iter != _pools.end(); iter++) {
+        if ((*iter)->name() == pool_name) {
             found = true;
             break;
         }
@@ -265,38 +280,37 @@ void NodeWrap::checkPool(char *pool_name)
         return;
     }
 
-    pool_ptr = virStoragePoolLookupByName(conn, pool_name);
+    pool_ptr = virStoragePoolLookupByName(_conn, pool_name);
     if (!pool_ptr) {
-        REPORT_ERR(conn, "virStoragePoolLookupByName");
+        REPORT_ERR(_conn, "virStoragePoolLookupByName");
     } else {
         printf("Creating new pool: %s, ptr is %p\n", pool_name, pool_ptr);
         PoolWrap *pool;
         try {
-            pool = new PoolWrap(agent, this, pool_ptr, conn);
+            pool = new PoolWrap(this, pool_ptr, _conn);
             printf("Created new pool: %s, ptr is %p\n", pool_name, pool_ptr);
-            pools.push_back(pool);
+            _pools.push_back(pool);
         } catch (int i) {
-            printf ("Error constructing pool\n");
-            REPORT_ERR(conn, "constructing pool.");
+            printf("Error constructing pool\n");
+            REPORT_ERR(_conn, "constructing pool.");
             delete pool;
         }
     }
 }
 
-void NodeWrap::syncPools()
+void NodeWrap::syncPools(void)
 {
     int maxname;
 
-    maxname = virConnectNumOfStoragePools(conn);
+    maxname = virConnectNumOfStoragePools(_conn);
     if (maxname < 0) {
-        REPORT_ERR(conn, "virConnectNumOfStroagePools");
+        REPORT_ERR(_conn, "virConnectNumOfStoragePools");
         return;
     } else {
-        char **names;
-        names = (char **) malloc(sizeof(char *) * maxname);
+        char *names[maxname];
 
-        if ((maxname = virConnectListStoragePools(conn, names, maxname)) < 0) {
-            REPORT_ERR(conn, "virConnectListStoragePools");
+        if ((maxname = virConnectListStoragePools(_conn, names, maxname)) < 0) {
+            REPORT_ERR(_conn, "virConnectListStoragePools");
             return;
         }
 
@@ -304,19 +318,17 @@ void NodeWrap::syncPools()
             checkPool(names[i]);
             free(names[i]);
         }
-        free(names);
     }
 
-    maxname = virConnectNumOfDefinedStoragePools(conn);
+    maxname = virConnectNumOfDefinedStoragePools(_conn);
     if (maxname < 0) {
-        REPORT_ERR(conn, "virConnectNumOfDefinedStoragePools");
+        REPORT_ERR(_conn, "virConnectNumOfDefinedStoragePools");
         return;
     } else {
-        char **names;
-        names = (char **) malloc(sizeof(char *) * maxname);
+        char *names[maxname];
 
-        if ((maxname = virConnectListDefinedStoragePools(conn, names, maxname)) < 0) {
-            REPORT_ERR(conn, "virConnectListDefinedStoragePools");
+        if ((maxname = virConnectListDefinedStoragePools(_conn, names, maxname)) < 0) {
+            REPORT_ERR(_conn, "virConnectListDefinedStoragePools");
             return;
         }
 
@@ -324,26 +336,23 @@ void NodeWrap::syncPools()
             checkPool(names[i]);
             free(names[i]);
         }
-
-        free(names);
     }
 
     /* Go through our list of pools and ensure that they still exist. */
-    for (std::vector<PoolWrap*>::iterator iter = pools.begin(); iter != pools.end();) {
-
-        printf ("Verifying pool %s\n", (*iter)->pool_name.c_str());
-        virStoragePoolPtr ptr = virStoragePoolLookupByUUIDString(conn, (*iter)->pool_uuid.c_str());
+    PoolList::iterator iter = _pools.begin();
+    while (iter != _pools.end()) {
+        printf("Verifying pool %s\n", (*iter)->name().c_str());
+        virStoragePoolPtr ptr = virStoragePoolLookupByUUIDString(_conn, (*iter)->uuid().c_str());
         if (ptr == NULL) {
-            printf("Destroying pool %s\n", (*iter)->pool_name.c_str());
+            printf("Destroying pool %s\n", (*iter)->name().c_str());
             delete(*iter);
-            iter = pools.erase(iter);
+            iter = _pools.erase(iter);
         } else {
             virStoragePoolFree(ptr);
             iter++;
         }
     }
 }
-
 
 void NodeWrap::doLoop()
 {
@@ -354,12 +363,10 @@ void NodeWrap::doLoop()
     /* Go through all domains and call update() for each, letting them update
      * information and statistics. */
     while (1) {
-        int read_fd = agent->getSignalFd();
-
         // We're using this to check to see if our connection is still good.
         // I don't see any reason this call should fail unless there is some
         // connection problem..
-        int maxname = virConnectNumOfDefinedDomains(conn);
+        int maxname = virConnectNumOfDefinedDomains(_conn);
         if (maxname < 0) {
             return;
         }
@@ -367,151 +374,200 @@ void NodeWrap::doLoop()
         syncDomains();
         syncPools();
 
-        for (std::vector<DomainWrap*>::iterator iter = domains.begin();
-                iter != domains.end(); iter++) {
+        for (DomainList::iterator iter = _domains.begin();
+                iter != _domains.end(); iter++) {
             (*iter)->update();
         }
-        for (std::vector<PoolWrap*>::iterator iter = pools.begin();
-                iter != pools.end(); iter++) {
+        for (PoolList::iterator iter = _pools.begin();
+                iter != _pools.end(); iter++) {
             (*iter)->update();
         }
 
-        /* Poll agent fd.  If any methods are being made this FD will be ready for reading.  */
-        FD_ZERO(&fds);
-        FD_SET(read_fd, &fds);
-
-        /* Wait up to three seconds. */
-        tv.tv_sec = 3;
-        tv.tv_usec = 0;
-
-        retval = select(read_fd + 1, &fds, NULL, NULL, &tv);
-        if (retval < 0) {
-            fprintf(stderr, "Error in select loop: %s\n", strerror(errno));
-            continue;
-        }
-
-        if (retval > 0) {
-            /* This implements any pending methods. */
-            agent->pollCallbacks();
+        qmf::AgentEvent event;
+        if (_session.nextEvent(event, qpid::messaging::Duration(3000))) {
+            if (event.getType() == qmf::AGENT_METHOD) {
+                bool handled = handleMethod(_session, event);
+                if (!handled) {
+                    raiseException(_session, event,
+                                   ERROR_UNKNOWN_OBJECT, STATUS_UNKNOWN_OBJECT);
+                }
+            }
         }
 
     }
 }
 
-Manageable::status_t
-NodeWrap::ManagementMethod(uint32_t methodId, Args& args, std::string &errstr)
+bool
+NodeWrap::domainDefineXML(qmf::AgentSession& session,
+                          qmf::AgentEvent& event)
 {
-    virDomainPtr domain_ptr;
-    cout << "Method Received: " << methodId << endl;
+    const std::string xmlDesc(event.getArguments()["xmlDesc"].asString());
     int ret;
 
-    switch (methodId) {
-        case _qmf::Node::METHOD_DOMAINDEFINEXML:
-        {
-            _qmf::ArgsNodeDomainDefineXML *io_args = (_qmf::ArgsNodeDomainDefineXML *) &args;
-            domain_ptr = virDomainDefineXML(conn, io_args->i_xmlDesc.c_str());
-            if (!domain_ptr) {
-                errstr = FORMAT_ERR(conn, "Error creating domain using xml description (virDomainDefineXML).", &ret);
-                return STATUS_USER + ret;
-            } else {
-                // Now we have to check to see if this domain is actually new or not, because it's possible that
-                // one already exists with this name/description and we just replaced it.. *ugh*
-                for (std::vector<DomainWrap*>::iterator iter = domains.begin(); iter != domains.end();) {
-                    if (strcmp((*iter)->domain_name.c_str(), virDomainGetName(domain_ptr)) == 0) {
-                        // We're just replacing an existing domain, however I'm pretty sure the
-                        // old domain pointer becomes invalid at this point, so we should destroy
-                        // the old domain reference.  The other option would be to replace it and
-                        // keep the object valid.. not sure which is better.
-                        printf("Old domain already exists, removing it in favor of new object.");
-                        delete(*iter);
-                        iter = domains.erase(iter);
-                    } else {
-                        iter++;
-                    }
-                }
+    virDomainPtr domain_ptr = virDomainDefineXML(_conn, xmlDesc.c_str());
+    if (!domain_ptr) {
+        std::string err = FORMAT_ERR(_conn, "Error creating domain using xml description (virDomainDefineXML).", &ret);
+        raiseException(session, event, err, STATUS_USER + ret);
+        return false;
+    }
 
-                DomainWrap *domain;
-                try {
-                    domain = new DomainWrap(agent, this, domain_ptr, conn);
-                    domains.push_back(domain);
-                    io_args->o_domain = domain->GetManagementObject()->getObjectId();
-                } catch (int i) {
-                    delete domain;
-                    errstr = FORMAT_ERR(conn, "Error constructing domain object in virDomainDefineXML.", &ret);
-                    return STATUS_USER + i;
-                }
-
-                return STATUS_OK;
-            }
-        }
-
-        case _qmf::Node::METHOD_STORAGEPOOLDEFINEXML:
-        {
-            _qmf::ArgsNodeStoragePoolDefineXML *io_args = (_qmf::ArgsNodeStoragePoolDefineXML *) &args;
-            virStoragePoolPtr pool_ptr;
-
-            pool_ptr = virStoragePoolDefineXML (conn, io_args->i_xmlDesc.c_str(), 0);
-            if (pool_ptr == NULL) {
-                errstr = FORMAT_ERR(conn, "Error defining storage pool using xml description (virStoragePoolDefineXML).", &ret);
-                return STATUS_USER + ret;
-            }
-
-            PoolWrap *pool;
-            try {
-                pool = new PoolWrap(agent, this, pool_ptr, conn);
-                pools.push_back(pool);
-                io_args->o_pool = pool->GetManagementObject()->getObjectId();
-            } catch (int i) {
-                delete pool;
-                errstr = FORMAT_ERR(conn, "Error constructing pool object in virStoragePoolDefineXML.", &ret);
-                return STATUS_USER + i;
-            }
-            return STATUS_OK;
-
-        }
-        case _qmf::Node::METHOD_STORAGEPOOLCREATEXML:
-        {
-            _qmf::ArgsNodeStoragePoolCreateXML *io_args = (_qmf::ArgsNodeStoragePoolCreateXML *) &args;
-            virStoragePoolPtr pool_ptr;
-
-            pool_ptr = virStoragePoolCreateXML (conn, io_args->i_xmlDesc.c_str(), 0);
-            if (pool_ptr == NULL) {
-                errstr = FORMAT_ERR(conn, "Error creating storage pool using xml description (virStoragePoolCreateXML).", &ret);
-                return STATUS_USER + ret;
-            }
-
-            PoolWrap *pool;
-            try {
-                pool = new PoolWrap(agent, this, pool_ptr, conn);
-                pools.push_back(pool);
-                io_args->o_pool = pool->GetManagementObject()->getObjectId();
-            } catch (int i) {
-                delete pool;
-                errstr = FORMAT_ERR(conn, "Error constructing pool object in virStoragePoolCreateXML.", &ret);
-                return STATUS_USER + i;
-            }
-
-            return STATUS_OK;
-        }
-        case _qmf::Node::METHOD_FINDSTORAGEPOOLSOURCES:
-        {
-            _qmf::ArgsNodeFindStoragePoolSources *io_args = (_qmf::ArgsNodeFindStoragePoolSources *) &args;
-            char *xml_result;
-
-            xml_result = virConnectFindStoragePoolSources(conn, io_args->i_type.c_str(), io_args->i_srcSpec.c_str(), 0);
-            if (xml_result == NULL) {
-                errstr = FORMAT_ERR(conn, "Error creating storage pool using xml description (virStoragePoolCreateXML).", &ret);
-                return STATUS_USER + ret;
-            }
-
-            io_args->o_xmlDesc = xml_result;
-            free(xml_result);
-
-            return STATUS_OK;
+    // Now we have to check to see if this domain is actually new or not,
+    // because it's possible that one already exists with this name/description
+    // and we just replaced it... *ugh*
+    DomainList::iterator iter = _domains.begin();
+    while (iter != _domains.end()) {
+        if ((*iter)->name() == virDomainGetName(domain_ptr)) {
+            // We're just replacing an existing domain, however I'm pretty sure
+            // the old domain pointer becomes invalid at this point, so we
+            // should destroy the old domain reference. The other option would
+            // be to replace it and keep the object valid... not sure which is
+            // better.
+            printf("Old domain already exists, removing it in favor of new object.");
+            delete(*iter);
+            iter = _domains.erase(iter);
+        } else {
+            iter++;
         }
     }
 
-    return STATUS_NOT_IMPLEMENTED;
+    DomainWrap *domain;
+    try {
+        domain = new DomainWrap(this, domain_ptr, _conn);
+        _domains.push_back(domain);
+        event.addReturnArgument("domain", domain->objectID());
+    } catch (int i) {
+        delete domain;
+        std::string err = FORMAT_ERR(_conn, "Error constructing domain object in virDomainDefineXML.", &ret);
+        raiseException(session, event, err, STATUS_USER + ret);
+        return false;
+    }
+
+    return true;
+}
+
+bool
+NodeWrap::storagePoolDefineXML(qmf::AgentSession& session,
+                               qmf::AgentEvent& event)
+{
+    const std::string xmlDesc(event.getArguments()["xmlDesc"].asString());
+    virStoragePoolPtr pool_ptr;
+    int ret;
+
+    pool_ptr = virStoragePoolDefineXML(_conn, xmlDesc.c_str(), 0);
+    if (pool_ptr == NULL) {
+        std::string err = FORMAT_ERR(_conn, "Error defining storage pool using xml description (virStoragePoolDefineXML).", &ret);
+        raiseException(session, event, err, STATUS_USER + ret);
+        return false;
+    }
+
+    PoolWrap *pool;
+    try {
+        pool = new PoolWrap(this, pool_ptr, _conn);
+        _pools.push_back(pool);
+        event.addReturnArgument("pool", pool->objectID());
+    } catch (int i) {
+        delete pool;
+        std::string err = FORMAT_ERR(_conn, "Error constructing pool object in virStoragePoolDefineXML.", &ret);
+        raiseException(session, event, err, STATUS_USER + ret);
+        return false;
+    }
+
+    return true;
+}
+
+bool
+NodeWrap::storagePoolCreateXML(qmf::AgentSession& session,
+                               qmf::AgentEvent& event)
+{
+    const std::string xmlDesc(event.getArguments()["xmlDesc"].asString());
+    virStoragePoolPtr pool_ptr;
+    int ret;
+
+    pool_ptr = virStoragePoolCreateXML (_conn, xmlDesc.c_str(), 0);
+    if (pool_ptr == NULL) {
+        std::string err = FORMAT_ERR(_conn, "Error creating storage pool using xml description (virStoragePoolCreateXML).", &ret);
+        raiseException(session, event, err, STATUS_USER + ret);
+        return false;
+    }
+
+    PoolWrap *pool;
+    try {
+        pool = new PoolWrap(this, pool_ptr, _conn);
+        _pools.push_back(pool);
+        event.addReturnArgument("pool", pool->objectID());
+    } catch (int i) {
+        delete pool;
+        std::string err = FORMAT_ERR(_conn, "Error constructing pool object in virStoragePoolCreateXML.", &ret);
+        raiseException(session, event, err, STATUS_USER + ret);
+        return false;
+    }
+
+    return true;
+}
+
+bool
+NodeWrap::findStoragePoolSources(qmf::AgentSession& session,
+                                 qmf::AgentEvent& event)
+{
+    qpid::types::Variant::Map args(event.getArguments());
+    const std::string type(args["type"].asString());
+    const std::string srcSpec(args["srcSpec"].asString());
+    char *xml_result;
+    int ret;
+
+    xml_result = virConnectFindStoragePoolSources(_conn, type.c_str(), srcSpec.c_str(), 0);
+    if (xml_result == NULL) {
+        std::string err = FORMAT_ERR(_conn, "Error creating storage pool using xml description (virStoragePoolCreateXML).", &ret);
+        raiseException(session, event, err, STATUS_USER + ret);
+        return false;
+    }
+
+    event.addReturnArgument("xmlDesc", xml_result);
+    free(xml_result);
+
+    return true;
+}
+
+bool
+NodeWrap::handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event)
+{
+    if (!event.hasDataAddr() || *this == event.getDataAddr()) {
+        const std::string& methodName(event.getMethodName());
+        bool success;
+
+        if (methodName == "domainDefineXML") {
+            success = domainDefineXML(session, event);
+        } else if (methodName == "storagePoolDefineXML") {
+            success = storagePoolDefineXML(session, event);
+        } else if (methodName == "storagePoolCreateXML") {
+            success = storagePoolCreateXML(session, event);
+        } else if (methodName == "findStoragePoolSources") {
+            success = findStoragePoolSources(session, event);
+        } else {
+            raiseException(session, event,
+                           ERROR_UNKNOWN_METHOD, STATUS_UNKNOWN_METHOD);
+            return true;
+        }
+
+        if (success) {
+            session.methodSuccess(event);
+        }
+        return true;
+    } else {
+        bool handled = false;
+
+        for (DomainList::iterator iter = _domains.begin();
+                !handled && iter != _domains.end(); iter++) {
+            handled = (*iter)->handleMethod(session, event);
+        }
+
+        for (PoolList::iterator iter = _pools.begin();
+                !handled && iter != _pools.end(); iter++) {
+            handled = (*iter)->handleMethod(session, event);
+        }
+
+        return handled;
+    }
 }
 
 static void
@@ -521,7 +577,6 @@ print_usage()
     printf("\t-d | --daemon     run as a daemon.\n");
     printf("\t-h | --help       print this help message.\n");
     printf("\t-b | --broker     specify broker host name..\n");
-    printf("\t-g | --gssapi     force GSSAPI authentication.\n");
     printf("\t-u | --username   username to use for authentication purproses.\n");
     printf("\t-s | --service    service name to use for authentication purproses.\n");
     printf("\t-p | --port       specify broker port.\n");
@@ -536,8 +591,7 @@ int main(int argc, char** argv) {
     int idx = 0;
     bool verbose = false;
     bool daemonize = false;
-    bool gssapi = false;
-    char *host = NULL;
+    const char *host = NULL;
     char *username = NULL;
     char *service = NULL;
     int port = 5672;
@@ -546,14 +600,13 @@ int main(int argc, char** argv) {
         {"help", 0, 0, 'h'},
         {"daemon", 0, 0, 'd'},
         {"broker", 1, 0, 'b'},
-        {"gssapi", 0, 0, 'g'},
         {"username", 1, 0, 'u'},
         {"service", 1, 0, 's'},
         {"port", 1, 0, 'p'},
         {0, 0, 0, 0}
     };
 
-    while ((arg = getopt_long(argc, argv, "hdb:gu:s:p:", opt, &idx)) != -1) {
+    while ((arg = getopt_long(argc, argv, "hdb:u:s:p:", opt, &idx)) != -1) {
         switch (arg) {
             case 'h':
             case '?':
@@ -581,9 +634,6 @@ int main(int argc, char** argv) {
                     print_usage();
                     exit(1);
                 }
-                break;
-            case 'g':
-                gssapi = true;
                 break;
             case 'p':
                 if (optarg) {
@@ -620,44 +670,42 @@ int main(int argc, char** argv) {
     // This prevents us from dying if libvirt disconnects.
     signal(SIGPIPE, SIG_IGN);
 
-    // Create the management agent
-    ManagementAgent::Singleton singleton;
-    ManagementAgent* agent = singleton.getInstance();
-
-    // Register the schema with the agent
-    _qmf::Package packageInit(agent);
-
-    // Start the agent.  It will attempt to make a connection to the
-    // management broker.  The third argument is the interval for sending
-    // updates to stats/properties to the broker.  The last is set to 'true'
-    // to keep this all single threaded.  Otherwise a second thread would be
-    // used to implement methods.
-
-    qpid::management::ConnectionSettings settings;
-    settings.host = host ? host : "127.0.0.1";
-    settings.port = port;
+    qpid::types::Variant::Map options;
 
     if (username != NULL) {
-        settings.username = username;
+        options["username"] = username;
     }
     if (service != NULL) {
-        settings.service = service;
-    }
-    if (gssapi == true) {
-        settings.mechanism = "GSSAPI";
+        options["service"] = service;
     }
 
-    agent->setName("Red Hat", "libvirt-qpid");
-    agent->init(settings, 3, true);
+    if (host == NULL) {
+        host = "127.0.0.1";
+    }
 
-    while(true) {
+    std::stringstream url;
+
+    url << "amqp:" << "tcp" << ":" << host << ":" << port;
+
+    qpid::messaging::Connection amqp_connection(url.str(), options);
+    amqp_connection.open();
+
+    qmf::AgentSession session(amqp_connection);
+    session.setVendor("libvirt.org");
+    session.setProduct("libvirt-qpid");
+    session.setAttribute("hostname", host);
+
+    session.open();
+    NodeWrap::PackageDefinition package;
+    package.configure(session);
+
+    initErrorSchema(session);
+
+    while (true) {
         try {
-            NodeWrap node(agent, "Libvirt Node");
+            NodeWrap node(session, package);
             node.doLoop();
-        } catch (int err) {
-        }
+        } catch (int err) { }
         sleep(10);
     }
 }
-
-

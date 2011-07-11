@@ -9,52 +9,54 @@
 #include "PoolWrap.h"
 #include "VolumeWrap.h"
 #include "Error.h"
+#include "Exception.h"
 
-#include "ArgsVolumeGetXMLDesc.h"
 
-namespace _qmf = qmf::com::redhat::libvirt;
-
-VolumeWrap::VolumeWrap(ManagementAgent *agent, PoolWrap *parent,
-                       virStorageVolPtr _volume_ptr, virConnectPtr _conn) :
-                       conn(_conn), volume_ptr(_volume_ptr)
+VolumeWrap::VolumeWrap(PoolWrap *parent,
+                       virStorageVolPtr volume_ptr,
+                       virConnectPtr connect):
+    PackageOwner<PoolWrap::PackageDefinition>(parent),
+    ManagedObject(package().data_Volume),
+    _volume_ptr(volume_ptr), _conn(connect),
+    _lvm_name(""), _has_lvm_child(false),
+    _wrap_parent(parent)
 {
-    const char *volume_key_s;
-    char *volume_path_s;
-    const char *volume_name_s;
+    const char *volume_key;
+    char *volume_path;
+    const char *volume_name;
 
-    volume = NULL;
-
-    wrap_parent = parent;
-
-    volume_key_s = virStorageVolGetKey(volume_ptr);
-    if (volume_key_s == NULL) {
-        REPORT_ERR(conn, "Error getting storage volume key\n");
+    volume_key = virStorageVolGetKey(_volume_ptr);
+    if (volume_key == NULL) {
+        REPORT_ERR(_conn, "Error getting storage volume key\n");
         throw 1;
     }
-    volume_key = volume_key_s;
+    _volume_key = volume_key;
 
-    volume_path_s = virStorageVolGetPath(volume_ptr);
-    if (volume_path_s == NULL) {
-        REPORT_ERR(conn, "Error getting volume path\n");
+    volume_path = virStorageVolGetPath(_volume_ptr);
+    if (volume_path == NULL) {
+        REPORT_ERR(_conn, "Error getting volume path\n");
         throw 1;
     }
-    volume_path = volume_path_s;
+    _volume_path = volume_path;
 
-    volume_name_s = virStorageVolGetName(volume_ptr);
-    if (volume_name_s == NULL) {
-        REPORT_ERR(conn, "Error getting volume name\n");
+    volume_name = virStorageVolGetName(_volume_ptr);
+    if (volume_name == NULL) {
+        REPORT_ERR(_conn, "Error getting volume name\n");
         throw 1;
     }
-    volume_name = volume_name_s;
+    _volume_name = volume_name;
 
-    lvm_name = "";
-    has_lvm_child = false;
+    _data.setProperty("key", _volume_key);
+    _data.setProperty("path", _volume_path);
+    _data.setProperty("name", _volume_name);
+    _data.setProperty("childLVMName", _lvm_name);
+    _data.setProperty("storagePool", parent->objectID());
 
-    checkForLVMPool();
+    // Set defaults
+    _data.setProperty("capacity", (uint64_t)0);
+    _data.setProperty("allocation", (uint64_t)0);
 
-    volume = new _qmf::Volume(agent, this, parent, volume_key, volume_path, volume_name, lvm_name);
-    printf("adding volume to agent - volume %p\n", volume);
-    agent->addObject(volume);
+    addData(_data);
 
     printf("done\n");
 }
@@ -63,9 +65,9 @@ void
 VolumeWrap::checkForLVMPool()
 {
     char *real_path = NULL;
-    char *pool_sources_xml;
+    const char *pool_sources_xml;
 
-    pool_sources_xml = wrap_parent->getPoolSourcesXml();
+    pool_sources_xml = _wrap_parent->getPoolSourcesXml();
 
     if (pool_sources_xml) {
         xmlDocPtr doc;
@@ -106,14 +108,14 @@ VolumeWrap::checkForLVMPool()
                 if (name && path) {
                     virStorageVolPtr vol;
 
-                    printf ("xml returned device name %s, path %s; volume path is %s\n", name, path, volume_path.c_str());
-                    vol = virStorageVolLookupByPath(conn, (char *) path);
+                    printf ("xml returned device name %s, path %s; volume path is %s\n", name, path, _volume_path.c_str());
+                    vol = virStorageVolLookupByPath(_conn, (char *) path);
                     if (vol != NULL) {
                         real_path = virStorageVolGetPath(vol);
-                        if (real_path && strcmp(real_path, volume_path.c_str()) == 0) {
+                        if (real_path && strcmp(real_path, _volume_path.c_str()) == 0) {
                             printf ("found matching storage volume associated with pool!\n");
-                            lvm_name.assign((char *) name);
-                            has_lvm_child = true;
+                            _lvm_name.assign((char *) name);
+                            _has_lvm_child = true;
                         }
                     }
                     xmlFree(path);
@@ -136,58 +138,59 @@ VolumeWrap::update()
 
     printf("Updating volume info\n");
 
-    ret = virStorageVolGetInfo(volume_ptr, &info);
+    ret = virStorageVolGetInfo(_volume_ptr, &info);
     if (ret < 0) {
-        REPORT_ERR(conn, "VolumeWrap: Unable to get info of storage volume info\n");
+        REPORT_ERR(_conn, "VolumeWrap: Unable to get info of storage volume info\n");
         return;
     }
-    volume->set_capacity(info.capacity);
-    volume->set_allocation(info.allocation);
+    _data.setProperty("capacity", (uint64_t)info.capacity);
+    _data.setProperty("allocation", (uint64_t)info.allocation);
 }
 
 VolumeWrap::~VolumeWrap()
 {
-    if (volume) {
-        volume->resourceDestroy();
-    }
-    virStorageVolFree(volume_ptr);
+    virStorageVolFree(_volume_ptr);
+
+    delData(_data);
 }
 
-Manageable::status_t
-VolumeWrap::ManagementMethod(uint32_t methodId, Args& args, std::string &errstr)
+bool
+VolumeWrap::handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event)
 {
-    cout << "Method Received: " << methodId << endl;
     int ret;
 
-    switch (methodId) {
-    case _qmf::Volume::METHOD_GETXMLDESC:
-        {
-            _qmf::ArgsVolumeGetXMLDesc *io_args = (_qmf::ArgsVolumeGetXMLDesc *) &args;
-            char *desc;
-
-            desc = virStorageVolGetXMLDesc(volume_ptr, 0);
-            if (desc) {
-                io_args->o_description = desc;
-            } else {
-                errstr = FORMAT_ERR(conn, "Error getting xml description for volume (virStorageVolGetXMLDesc).", &ret);
-                return STATUS_USER + ret;
-            }
-            return STATUS_OK;
-        }
-    case _qmf::Volume::METHOD_DELETE:
-        {
-            ret = virStorageVolDelete(volume_ptr, 0);
-            if (ret < 0) {
-                errstr = FORMAT_ERR(conn, "Error deleting storage volume (virStorageVolDelete).", &ret);
-                return STATUS_USER + ret;
-            }
-            update();
-            return STATUS_OK;
-        }
+    if (*this != event.getDataAddr()) {
+        return false;
     }
 
+    const std::string& methodName(event.getMethodName());
+    qpid::types::Variant::Map args(event.getArguments());
 
-    return STATUS_NOT_IMPLEMENTED;
+    if (methodName == "getXMLDesc") {
+        const char *desc = virStorageVolGetXMLDesc(_volume_ptr, 0);
+        if (!desc) {
+            std::string err = FORMAT_ERR(_conn, "Error getting xml description for volume (virStorageVolGetXMLDesc).", &ret);
+            raiseException(session, event, err, STATUS_USER + ret);
+        } else {
+            event.addReturnArgument("description", desc);
+            session.methodSuccess(event);
+        }
+        return true;
+    }
+
+    if (methodName == "delete") {
+        ret = virStorageVolDelete(_volume_ptr, 0);
+        if (ret < 0) {
+            std::string err = FORMAT_ERR(_conn, "Error deleting storage volume (virStorageVolDelete).", &ret);
+            raiseException(session, event, err, STATUS_USER + ret);
+        } else {
+            update();
+            session.methodSuccess(event);
+        }
+        return true;
+    }
+
+    raiseException(session, event,
+                   ERROR_UNKNOWN_METHOD, STATUS_UNKNOWN_METHOD);
+    return true;
 }
-
-

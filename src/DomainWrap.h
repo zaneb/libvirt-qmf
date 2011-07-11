@@ -1,10 +1,7 @@
-#include <qpid/management/Manageable.h>
-#include <qpid/management/ManagementObject.h>
-#include <qpid/agent/ManagementAgent.h>
-#include <qpid/sys/Mutex.h>
+#ifndef DOMAIN_WRAP_H
+#define DOMAIN_WRAP_H
 
-#include "Package.h"
-#include "Domain.h"
+#include "NodeWrap.h"
 
 #include <unistd.h>
 #include <cstdlib>
@@ -15,38 +12,30 @@
 #include <libvirt/libvirt.h>
 #include <libvirt/virterror.h>
 
-using namespace qpid::management;
-using namespace qpid::sys;
-using namespace std;
-using qpid::management::ManagementObject;
-using qpid::management::Manageable;
-using qpid::management::Args;
-using qpid::sys::Mutex;
 
-class DomainWrap : public Manageable
+class DomainWrap:
+    PackageOwner<NodeWrap::PackageDefinition>,
+    public ManagedObject
 {
-    ManagementAgent *agent;
-    qmf::com::redhat::libvirt::Domain *domain;
+    virDomainPtr _domain_ptr;
+    virConnectPtr _conn;
 
-    virDomainPtr domain_ptr;
-    virConnectPtr conn;
+    std::string _domain_name;
+    std::string _domain_uuid;
 
 public:
-
-    std::string domain_name;
-    std::string domain_uuid;
-
-    DomainWrap(ManagementAgent *agent, NodeWrap *parent, virDomainPtr domain_ptr, 
-                virConnectPtr connect);
+    DomainWrap(NodeWrap *parent,
+               virDomainPtr domain_ptr, virConnectPtr conn);
     ~DomainWrap();
 
-    ManagementObject* GetManagementObject(void) const
-    { 
-        return domain; 
-    }
-
+    std::string& name(void) { return _domain_name; }
+    std::string& uuid(void) { return _domain_uuid; }
     void update();
 
-    status_t ManagementMethod (uint32_t methodId, Args& args, std::string &errstr);
+    bool handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event);
+
+private:
+    bool migrate(qmf::AgentSession& session, qmf::AgentEvent& event);
 };
 
+#endif
