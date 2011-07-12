@@ -1,8 +1,7 @@
 #ifndef NODE_WRAP_H
 #define NODE_WRAP_H
 
-#include "ManagedObject.h"
-#include "QmfPackage.h"
+#include "LibvirtAgent.h"
 
 #include <unistd.h>
 #include <cstdlib>
@@ -19,7 +18,7 @@ class DomainWrap;
 class PoolWrap;
 
 class NodeWrap:
-    public PackageOwner<qmf::com::redhat::libvirt::PackageDefinition>,
+    public PackageOwner<LibvirtAgent::PackageDefinition>,
     public ManagedObject
 {
     typedef std::vector<DomainWrap*> DomainList;
@@ -30,26 +29,15 @@ class NodeWrap:
 
     virConnectPtr _conn;
 
-    qmf::AgentSession& _session;
-    PackageDefinition& _package;
+    LibvirtAgent *_agent;
 
 public:
-    NodeWrap(qmf::AgentSession& agent_session, PackageDefinition& package);
+    NodeWrap(LibvirtAgent *agent);
     ~NodeWrap();
 
-    void doLoop();
+    void poll(void);
 
     bool handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event);
-
-    virtual PackageDefinition& package(void) { return _package; }
-
-    virtual void addData(qmf::Data& data) {
-        _session.addData(data);
-    }
-
-    virtual void delData(qmf::Data& data) {
-        _session.delData(data.getAddr());
-    }
 
 protected:
     void syncDomains(void);

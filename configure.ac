@@ -21,6 +21,7 @@ dnl Required minimum versions of all libs we depend on
 LIBVIRT_REQUIRED="4.4.0"
 
 PKG_CHECK_MODULES(XML, libxml-2.0)
+PKG_CHECK_MODULES([DEPS], [glib-2.0])
 
 AC_OUTPUT(Makefile src/Makefile doc/Makefile)
 

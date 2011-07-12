@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <getopt.h>
-#include <syslog.h>
 #include <signal.h>
 #include <cstdio>
 
@@ -15,10 +14,10 @@
 #include "Exception.h"
 
 
-NodeWrap::NodeWrap(qmf::AgentSession& agent_session, PackageDefinition& package):
-    ManagedObject(package.data_Node),
-    _session(agent_session),
-    _package(package)
+NodeWrap::NodeWrap(LibvirtAgent *agent):
+    PackageOwner<LibvirtAgent::PackageDefinition>(agent),
+    ManagedObject(package().data_Node),
+    _agent(agent)
 {
     virNodeInfo info;
     char *hostname;
@@ -354,46 +353,27 @@ void NodeWrap::syncPools(void)
     }
 }
 
-void NodeWrap::doLoop()
+void
+NodeWrap::poll(void)
 {
-    fd_set fds;
-    struct timeval tv;
-    int retval;
+    // We're using this to check to see if our connection is still good.
+    // I don't see any reason this call should fail unless there is some
+    // connection problem..
+    int maxname = virConnectNumOfDefinedDomains(_conn);
+    if (maxname < 0) {
+        return;
+    }
 
-    /* Go through all domains and call update() for each, letting them update
-     * information and statistics. */
-    while (1) {
-        // We're using this to check to see if our connection is still good.
-        // I don't see any reason this call should fail unless there is some
-        // connection problem..
-        int maxname = virConnectNumOfDefinedDomains(_conn);
-        if (maxname < 0) {
-            return;
-        }
+    syncDomains();
+    syncPools();
 
-        syncDomains();
-        syncPools();
-
-        for (DomainList::iterator iter = _domains.begin();
-                iter != _domains.end(); iter++) {
-            (*iter)->update();
-        }
-        for (PoolList::iterator iter = _pools.begin();
-                iter != _pools.end(); iter++) {
-            (*iter)->update();
-        }
-
-        qmf::AgentEvent event;
-        if (_session.nextEvent(event, qpid::messaging::Duration(3000))) {
-            if (event.getType() == qmf::AGENT_METHOD) {
-                bool handled = handleMethod(_session, event);
-                if (!handled) {
-                    raiseException(_session, event,
-                                   ERROR_UNKNOWN_OBJECT, STATUS_UNKNOWN_OBJECT);
-                }
-            }
-        }
-
+    for (DomainList::iterator iter = _domains.begin();
+            iter != _domains.end(); iter++) {
+        (*iter)->update();
+    }
+    for (PoolList::iterator iter = _pools.begin();
+            iter != _pools.end(); iter++) {
+        (*iter)->update();
     }
 }
 
@@ -570,142 +550,3 @@ NodeWrap::handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event)
     }
 }
 
-static void
-print_usage()
-{
-    printf("Usage:\tlibvirt-qpid <options>\n");
-    printf("\t-d | --daemon     run as a daemon.\n");
-    printf("\t-h | --help       print this help message.\n");
-    printf("\t-b | --broker     specify broker host name..\n");
-    printf("\t-u | --username   username to use for authentication purproses.\n");
-    printf("\t-s | --service    service name to use for authentication purproses.\n");
-    printf("\t-p | --port       specify broker port.\n");
-}
-
-
-//==============================================================
-// Main program
-//==============================================================
-int main(int argc, char** argv) {
-    int arg;
-    int idx = 0;
-    bool verbose = false;
-    bool daemonize = false;
-    const char *host = NULL;
-    char *username = NULL;
-    char *service = NULL;
-    int port = 5672;
-
-    struct option opt[] = {
-        {"help", 0, 0, 'h'},
-        {"daemon", 0, 0, 'd'},
-        {"broker", 1, 0, 'b'},
-        {"username", 1, 0, 'u'},
-        {"service", 1, 0, 's'},
-        {"port", 1, 0, 'p'},
-        {0, 0, 0, 0}
-    };
-
-    while ((arg = getopt_long(argc, argv, "hdb:u:s:p:", opt, &idx)) != -1) {
-        switch (arg) {
-            case 'h':
-            case '?':
-                print_usage();
-                exit(0);
-                break;
-            case 'd':
-                daemonize = true;
-                break;
-            case 'v':
-                verbose = true;
-                break;
-            case 's':
-                if (optarg) {
-                    service = strdup(optarg);
-                } else {
-                    print_usage();
-                    exit(1);
-                }
-                break;
-            case 'u':
-                if (optarg) {
-                    username = strdup(optarg);
-                } else {
-                    print_usage();
-                    exit(1);
-                }
-                break;
-            case 'p':
-                if (optarg) {
-                    port = atoi(optarg);
-                } else {
-                    print_usage();
-                    exit(1);
-                }
-                break;
-            case 'b':
-                if (optarg) {
-                    host = strdup(optarg);
-                } else {
-                    print_usage();
-                    exit(1);
-                }
-                break;
-            default:
-                fprintf(stderr, "unsupported option '-%c'.  See --help.\n", arg);
-                print_usage();
-                exit(0);
-            break;
-        }
-    }
-
-    if (daemonize == true) {
-        if (daemon(0, 0) < 0) {
-            fprintf(stderr, "Error daemonizing: %s\n", strerror(errno));
-            exit(1);
-        }
-    }
-    openlog("libvirt-qpid", 0, LOG_DAEMON);
-
-    // This prevents us from dying if libvirt disconnects.
-    signal(SIGPIPE, SIG_IGN);
-
-    qpid::types::Variant::Map options;
-
-    if (username != NULL) {
-        options["username"] = username;
-    }
-    if (service != NULL) {
-        options["service"] = service;
-    }
-
-    if (host == NULL) {
-        host = "127.0.0.1";
-    }
-
-    std::stringstream url;
-
-    url << "amqp:" << "tcp" << ":" << host << ":" << port;
-
-    qpid::messaging::Connection amqp_connection(url.str(), options);
-    amqp_connection.open();
-
-    qmf::AgentSession session(amqp_connection);
-    session.setVendor("libvirt.org");
-    session.setProduct("libvirt-qpid");
-    session.setAttribute("hostname", host);
-
-    session.open();
-    NodeWrap::PackageDefinition package;
-    package.configure(session);
-
-    initErrorSchema(session);
-
-    while (true) {
-        try {
-            NodeWrap node(session, package);
-            node.doLoop();
-        } catch (int err) { }
-        sleep(10);
-    }
-}

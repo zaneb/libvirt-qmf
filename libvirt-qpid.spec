@@ -10,6 +10,7 @@ Requires: libxml2 >= 2.7.1
 Requires: qmf >= 0.5.790661
 Requires: qpid-cpp-client >= 0.10
 Requires: libvirt >= 0.4.4
+Requires: matahari-lib >= 0.4.1
 Requires(post):  /sbin/chkconfig
 Requires(preun): /sbin/chkconfig
 Requires(preun): initscripts
@@ -17,6 +18,7 @@ BuildRequires: qpid-cpp-client-devel >= 0.10
 BuildRequires: libxml2-devel >= 2.7.1
 BuildRequires: libvirt-devel >= 0.5.0
 BuildRequires: qmf-devel >= 0.5.790661
+BuildRequires: matahari-devel >= 0.4.1
 Url: http://libvirt.org/qpid
 
 %description
