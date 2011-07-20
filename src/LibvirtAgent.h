@@ -11,7 +11,7 @@ class NodeWrap;
 
 class LibvirtAgent:
     public MatahariAgent,
-    public PackageOwner<qmf::com::redhat::libvirt::PackageDefinition>
+    public PackageOwner<qmf::org::libvirt::PackageDefinition>
 {
 public:
     ~LibvirtAgent();

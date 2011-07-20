@@ -1,12 +1,12 @@
 ## Process this file with automake to produce Makefile.in
 
-INCLUDES = -I$(top_srcdir)/src/qmf/com/redhat/libvirt
+INCLUDES = -I$(top_srcdir)/src/qmf/org/libvirt
 
 sbin_PROGRAMS = libvirt-qpid
 
 generated_file_list = \
-	qmf/com/redhat/libvirt/QmfPackage.cpp\
-	qmf/com/redhat/libvirt/QmfPackage.h
+	qmf/org/libvirt/QmfPackage.cpp\
+	qmf/org/libvirt/QmfPackage.h
 
 nodist_libvirt_qpid_SOURCES = $(generated_file_list)
 
