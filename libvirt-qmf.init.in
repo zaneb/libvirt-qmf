@@ -1,0 +1,93 @@
+#!/bin/sh
+
+# the following is chkconfig init header
+# libvirt-qmf: QMF agent for libvirt
+### BEGIN INIT INFO
+# Provides: libvirt-qmf
+# Should-Start: libvirtd
+# Required-Start: $local_fs matahari-broker
+# Required-Stop: $local_fs matahari-broker
+# Default-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: Starts and stops the libvirt-qmf matahari agent
+# Description: Matahari agent providing an API to libvirt using the AMQP protocol.
+### END INIT INFO
+
+# chkconfig: - 99 01
+# Description: Matahari agent providing an API to libvirt using the AMQP protocol.
+# processname: libvirt-qmf
+# pidfile: @localstatedir@/run/libvirt-qmf.pid
+#
+
+# Source function library.
+. @sysconfdir@/rc.d/init.d/functions
+
+SERVICE=libvirt-qmf
+PROCESS=libvirt-qmf
+
+RETVAL=0
+
+test -f @sysconfdir@/sysconfig/matahari && . @sysconfdir@/sysconfig/matahari
+
+start() {
+    echo -n $"Starting the $SERVICE daemon: "
+    ARGS=--daemon
+    if [ -n "$MATAHARI_PORT" ]; then
+        ARGS=--port $MATAHARI_PORT $ARGS
+    fi
+    if [ -n "$MATAHARI_BROKER" ]; then
+        ARGS=--broker $MATAHARI_BROKER $ARGS
+    fi
+    daemon $PROCESS $ARGS $MATAHARI_AGENT_ARGS
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && touch @localstatedir@/lock/subsys/$SERVICE
+}
+
+stop() {
+    echo -n $"Stopping the $SERVICE daemon: "
+
+    killproc $PROCESS
+    RETVAL=$?
+    echo
+    if [ $RETVAL -eq 0 ]; then
+        rm -f @localstatedir@/lock/subsys/$SERVICE
+        rm -f @localstatedir@/run/$SERVICE.pid
+    fi
+}
+
+restart() {
+    stop
+    start
+}
+
+reload() {
+    echo -n $"Reloading the $SERVICE configuration: "
+
+    killproc $PROCESS -HUP
+    RETVAL=$?
+    echo
+    return $RETVAL
+}
+
+# See how we were called.
+case "$1" in
+    start|stop|restart|reload)
+        $1
+        ;;
+    status)
+        status $PROCESS
+        RETVAL=$?
+        ;;
+    force-reload)
+        reload
+        ;;
+    condrestart|try-restart)
+        [ -f @localstatedir@/lock/subsys/$SERVICE ] && restart || :
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|status|restart|condrestart|reload}"
+        exit 1
+        ;;
+esac
+exit $RETVAL

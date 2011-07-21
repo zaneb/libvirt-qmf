@@ -1,34 +1,35 @@
 Summary: QPid QMF interface to Libvirt
-Name: libvirt-qpid
-Version: 0.2.22
-Release: 3%{?dist}
+Name: libvirt-qmf
+Version: 0.3.0
+Release: 1%{?dist}
 Source: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
 License: LGPLv2+
 Group: Applications/System
+Obsoletes: libvirt-qpid
 Requires: libxml2 >= 2.7.1
-Requires: qmf >= 0.5.790661
+Requires: qmf >= 0.8
 Requires: qpid-cpp-client >= 0.10
 Requires: libvirt >= 0.4.4
-Requires: matahari-lib >= 0.4.1
+Requires: matahari-lib >= 0.4.2
 Requires(post):  /sbin/chkconfig
 Requires(preun): /sbin/chkconfig
 Requires(preun): initscripts
 BuildRequires: qpid-cpp-client-devel >= 0.10
 BuildRequires: libxml2-devel >= 2.7.1
 BuildRequires: libvirt-devel >= 0.5.0
-BuildRequires: qmf-devel >= 0.5.790661
-BuildRequires: matahari-devel >= 0.4.1
+BuildRequires: qmf-devel >= 0.8
+BuildRequires: matahari-devel >= 0.4.2
 Url: http://libvirt.org/qpid
 
 %description
 
-libvirt-qpid provides an interface with libvirt using QMF (qpid modeling
-framework) which utilizes the AMQP protocol.  The Advanced Message Queuing
+libvirt-qmf provides an interface with libvirt using QMF (Qpid Management
+Framework), which utilizes the AMQP protocol.  The Advanced Message Queuing
 Protocol (AMQP) is an open standard application layer protocol providing
 reliable transport of messages.
 
-QMF provides a modeling framework layer on top of qpid (which implements 
+QMF provides a management framework layer on top of qpid (which implements 
 AMQP).  This interface allows you to manage hosts, domains, pools etc. as
 a set of objects with properties and methods.
 
@@ -44,18 +45,18 @@ rm -rf %{buildroot}
 %makeinstall
 
 %post
-/sbin/chkconfig --add libvirt-qpid --level -
-/sbin/service libvirt-qpid condrestart
+/sbin/chkconfig --add libvirt-qmf --level -
+/sbin/service libvirt-qmf condrestart
 
 %preun
 if [ $1 = 0 ]; then
-    /sbin/service libvirt-qpid stop >/dev/null 2>&1 || :
-    chkconfig --del libvirt-qpid
+    /sbin/service libvirt-qmf stop >/dev/null 2>&1 || :
+    chkconfig --del libvirt-qmf
 fi
 
 %postun
 if [ "$1" -ge "1" ]; then
-    /sbin/service libvirt-qpid condrestart >/dev/null 2>&1 || :
+    /sbin/service libvirt-qmf condrestart >/dev/null 2>&1 || :
 fi
 
 %clean
@@ -64,17 +65,21 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 %files
 
 %defattr(644, root, root, 755)
-%dir %{_datadir}/libvirt-qpid/
-%{_datadir}/libvirt-qpid/libvirt-schema.xml
+%dir %{_datadir}/libvirt-qmf/
+%{_datadir}/libvirt-qmf/libvirt-schema.xml
 
-%attr(755, root, root) %{_sbindir}/libvirt-qpid
-%attr(755, root, root) %{_sysconfdir}/rc.d/init.d/libvirt-qpid
-%config(noreplace) %{_sysconfdir}/sysconfig/libvirt-qpid
+%attr(755, root, root) %{_sbindir}/libvirt-qmf
+%attr(755, root, root) %{_sysconfdir}/rc.d/init.d/libvirt-qmf
 
 %doc AUTHORS COPYING
 
 
 %changelog
+* Thu Jul 21 2011 Zane Bitter <zbitter@redhat.com> - 0.3.0-1
+- Change package name from libvirt-qpid to libvirt-qmf
+- Convert to QMFv2 API
+- Make libvirt-qmf a matahari agent
+
 * Thu May  5 2011 Daniel P. Berrange <berrange@redhat.com> - 0.2.22-3
 - Add fix for parallel make race condition
 - Add missing qpidtypes link flag

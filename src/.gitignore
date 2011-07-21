@@ -1,5 +1,5 @@
 qmf
 .deps
 *.o
-libvirt-qpid
+libvirt-qmf
 *.tstamp

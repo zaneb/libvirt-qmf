@@ -82,9 +82,9 @@ main(int argc, char **argv)
 {
     LibvirtAgent agent;
 
-    int rc = agent.init(argc, argv, "libvirt");
+    int rc = agent.init(argc, argv, "libvirt-qmf");
 
-    openlog("libvirt-qpid", 0, LOG_DAEMON);
+    openlog("libvirt-qmf", 0, LOG_DAEMON);
 
     // This prevents us from dying if libvirt disconnects.
     signal(SIGPIPE, SIG_IGN);

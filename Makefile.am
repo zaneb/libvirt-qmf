@@ -4,24 +4,20 @@ SUBDIRS = src doc
 
 rpm: clean
 	@(unset CDPATH ; $(MAKE) dist && cp $(distdir).tar.gz \
-	  $(HOME)/rpmbuild/SOURCES/ && rpmbuild -ba libvirt-qpid.spec)
+	  $(HOME)/rpmbuild/SOURCES/ && rpmbuild -ba libvirt-qmf.spec)
 
 install-data-local: install-init
 uninstall-local:: uninstall-init
 
-install-init: libvirt-qpid.init
+install-init: libvirt-qmf.init
 	mkdir -p $(DESTDIR)$(sysconfdir)/rc.d/init.d
-	$(INSTALL_SCRIPT) libvirt-qpid.init \
-	  $(DESTDIR)$(sysconfdir)/rc.d/init.d/libvirt-qpid
-	mkdir -p $(DESTDIR)$(sysconfdir)/sysconfig
-	$(INSTALL_SCRIPT) libvirt-qpid.sysconf \
-	  $(DESTDIR)$(sysconfdir)/sysconfig/libvirt-qpid
+	$(INSTALL_SCRIPT) libvirt-qmf.init \
+	  $(DESTDIR)$(sysconfdir)/rc.d/init.d/libvirt-qmf
 
 uninstall-init:
-	rm -f $(DESTDIR)$(sysconfdir)/rc.d/init.d/libvirt-qpid \
-		$(DESTDIR)$(sysconfdir)/sysconfig/libvirt-qpid
+	rm -f $(DESTDIR)$(sysconfdir)/rc.d/init.d/libvirt-qmf
 
-libvirt-qpid.init: libvirt-qpid.init.in
+libvirt-qmf.init: libvirt-qmf.init.in
 	sed						\
 	    -e s!\@localstatedir\@!@localstatedir@!g	\
 	    -e s!\@sbindir\@!@sbindir@!g		\
@@ -31,8 +27,7 @@ libvirt-qpid.init: libvirt-qpid.init.in
 	mv $@-t $@
 
 EXTRA_DIST = 	autogen.sh \
-		libvirt-qpid.init.in \
-		libvirt-qpid.sysconf
+		libvirt-qmf.init.in
 
-CLEANFILES = 	libvirt-qpid.init
+CLEANFILES = 	libvirt-qmf.init
 
