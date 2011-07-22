@@ -2,23 +2,18 @@ Summary: QPid QMF interface to Libvirt
 Name: libvirt-qmf
 Version: 0.3.0
 Release: 1%{?dist}
-Source: %{name}-%{version}.tar.gz
+Source: https://github.com/matahari/libvirt-qmf/downloads/%{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
 License: LGPLv2+
 Group: Applications/System
-Obsoletes: libvirt-qpid
-Requires: libxml2 >= 2.7.1
-Requires: qmf >= 0.8
-Requires: qpid-cpp-client >= 0.10
-Requires: libvirt >= 0.4.4
-Requires: matahari-lib >= 0.4.2
+Obsoletes: libvirt-qpid < 0.3.0
 Requires(post):  /sbin/chkconfig
 Requires(preun): /sbin/chkconfig
 Requires(preun): initscripts
 BuildRequires: qpid-cpp-client-devel >= 0.10
 BuildRequires: libxml2-devel >= 2.7.1
 BuildRequires: libvirt-devel >= 0.5.0
-BuildRequires: qmf-devel >= 0.8
+BuildRequires: qpid-qmf-devel >= 0.8
 BuildRequires: matahari-devel >= 0.4.2
 Url: http://libvirt.org/qpid
 
@@ -38,7 +33,7 @@ a set of objects with properties and methods.
 
 %build
 %configure
-make
+make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
@@ -60,8 +55,7 @@ if [ "$1" -ge "1" ]; then
 fi
 
 %clean
-test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
-
+test "x%{buildroot}" != "x" && rm -rf %{buildroot}
 %files
 
 %defattr(644, root, root, 755)
