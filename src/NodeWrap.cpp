@@ -101,7 +101,7 @@ NodeWrap::NodeWrap(LibvirtAgent *agent):
     _data.setProperty("hypervisorType", hv_type);
 
     _data.setProperty("model", info.model);
-    _data.setProperty("memory", info.memory);
+    _data.setProperty("memory", (uint64_t)info.memory);
     _data.setProperty("cpus", info.cpus);
     _data.setProperty("mhz", info.mhz);
     _data.setProperty("nodes", info.nodes);

@@ -39,7 +39,7 @@ DomainWrap::DomainWrap(
     // Set defaults
     _data.setProperty("state", "");
     _data.setProperty("numVcpus", 0);
-    _data.setProperty("maximumMemory", 0);
+    _data.setProperty("maximumMemory", (uint64_t)0);
     _data.setProperty("memory", (uint64_t)0);
     _data.setProperty("cpuTime", (uint64_t)0);
 
@@ -95,7 +95,7 @@ DomainWrap::update()
 
         _data.setProperty("state", state);
         _data.setProperty("numVcpus", info.nrVirtCpu);
-        _data.setProperty("maximumMemory", info.maxMem);
+        _data.setProperty("maximumMemory", (uint64_t)info.maxMem);
         _data.setProperty("memory", (uint64_t)info.memory);
         _data.setProperty("cpuTime", (uint64_t)info.cpuTime);
     }
