@@ -37,8 +37,10 @@ DomainWrap::DomainWrap(
     _data.setProperty("node", parent->objectID());
 
     // Set defaults
-    _data.setProperty("state", "");
+    _data.setProperty("id", -1);
+    _data.setProperty("state", "nostate");
     _data.setProperty("numVcpus", 0);
+    _data.setProperty("active", "false");
     _data.setProperty("maximumMemory", (uint64_t)0);
     _data.setProperty("memory", (uint64_t)0);
     _data.setProperty("cpuTime", (uint64_t)0);
