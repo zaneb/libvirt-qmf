@@ -60,7 +60,6 @@ class NodeTest(unittest.TestCase, LibvirtQMFTest):
         self.assertTrue(desc.startswith('<sources>'))
         self.assertTrue(desc.endswith('</sources>'))
 
-    @unittest.expectedFailure
     def test_findPoolSources_error(self):
         result = self.node().findStoragePoolSources('rubbish', '')
         self.assertEqual(result.status, (1 << 16) | 1, result)

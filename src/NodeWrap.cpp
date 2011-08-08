@@ -386,7 +386,7 @@ NodeWrap::domainDefineXML(qmf::AgentSession& session,
 
     virDomainPtr domain_ptr = virDomainDefineXML(_conn, xmlDesc.c_str());
     if (!domain_ptr) {
-        std::string err = FORMAT_ERR(_conn, "Error creating domain using xml description (virDomainDefineXML).", &ret);
+        std::string err = FORMAT_ERR(_conn, "Error defining domain using xml description (virDomainDefineXML).", &ret);
         raiseException(session, event, err, STATUS_USER + ret);
         return false;
     }
@@ -497,7 +497,7 @@ NodeWrap::findStoragePoolSources(qmf::AgentSession& session,
 
     xml_result = virConnectFindStoragePoolSources(_conn, type.c_str(), srcSpec.c_str(), 0);
     if (xml_result == NULL) {
-        std::string err = FORMAT_ERR(_conn, "Error creating storage pool using xml description (virStoragePoolCreateXML).", &ret);
+        std::string err = FORMAT_ERR(_conn, "Error finding storage pool sources (virConnectFindStoragePoolSources).", &ret);
         raiseException(session, event, err, STATUS_USER + ret);
         return false;
     }

@@ -198,7 +198,7 @@ DomainWrap::handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event)
         int ret = virDomainRestore(_conn, filename.c_str());
         update();
         if (ret < 0) {
-            std::string err = FORMAT_ERR(_conn, "Error saving domain (virDomainSave).", &ret);
+            std::string err = FORMAT_ERR(_conn, "Error restoring domain (virDomainRestore).", &ret);
             raiseException(session, event, err, STATUS_USER + ret);
         } else {
             session.methodSuccess(event);
@@ -234,7 +234,7 @@ DomainWrap::handleMethod(qmf::AgentSession& session, qmf::AgentEvent& event)
         const char *desc = virDomainGetXMLDesc(_domain_ptr,
                 VIR_DOMAIN_XML_SECURE | VIR_DOMAIN_XML_INACTIVE);
         if (!desc) {
-            std::string err = FORMAT_ERR(_conn, "Error rebooting domain (virDomainReboot).", &ret);
+            std::string err = FORMAT_ERR(_conn, "Error getting XML description of domain (virDomainGetXMLDesc).", &ret);
             raiseException(session, event, err, STATUS_USER + ret);
         } else {
             event.addReturnArgument("description", desc);
