@@ -33,10 +33,10 @@ start() {
     echo -n $"Starting the $SERVICE daemon: "
     ARGS=--daemon
     if [ -n "$MATAHARI_PORT" ]; then
-        ARGS=--port $MATAHARI_PORT $ARGS
+        ARGS="--port $MATAHARI_PORT $ARGS"
     fi
     if [ -n "$MATAHARI_BROKER" ]; then
-        ARGS=--broker $MATAHARI_BROKER $ARGS
+        ARGS="--broker $MATAHARI_BROKER $ARGS"
     fi
     daemon $PROCESS $ARGS $MATAHARI_AGENT_ARGS
     RETVAL=$?
