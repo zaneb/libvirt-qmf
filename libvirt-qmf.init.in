@@ -38,7 +38,7 @@ start() {
     if [ -n "$MATAHARI_BROKER" ]; then
         ARGS="--broker $MATAHARI_BROKER $ARGS"
     fi
-    daemon $PROCESS $ARGS $MATAHARI_AGENT_ARGS
+    daemon $PROCESS $ARGS $MATAHARI_AGENT_ARGS $libvirt_qmf_AGENT_ARGS
     RETVAL=$?
     echo
     [ $RETVAL -eq 0 ] && touch @localstatedir@/lock/subsys/$SERVICE

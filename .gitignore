@@ -12,3 +12,4 @@ missing
 stamp-h1
 *.tar.gz
 libvirt-qmf.init
+libvirt-qmf.service

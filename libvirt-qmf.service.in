@@ -1,0 +1,18 @@
+[Unit]
+Description=Matahari libvirt daemon using the AMQP protocol.
+After=syslog.target network.target matahari-broker.service
+Requires=syslog.target network.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+NotifyAccess=main
+SysVStartPriority=99
+
+EnvironmentFile=-@sysconfdir@/sysconfig/matahari
+ExecStart=@sbindir@/libvirt-qmf $MATAHARI_AGENT_ARGS $libvirt_qmf_AGENT_ARGS
+
+# Restart options include: no, on-success, on-failure, on-abort or always
+Restart=on-failure
