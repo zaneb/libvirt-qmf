@@ -11,7 +11,7 @@ DIE=0
 
 (autoconf --version) < /dev/null > /dev/null 2>&1 || {
 	echo
-	echo "You must have autoconf installed to compile libvirt."
+	echo "You must have autoconf installed to compile libvirt-qmf."
 	echo "Download the appropriate package for your distribution,"
 	echo "or see http://www.gnu.org/software/autoconf"
 	DIE=1
@@ -19,7 +19,7 @@ DIE=0
 
 (libtool --version) < /dev/null > /dev/null 2>&1 || {
 	echo
-	echo "You must have libtool installed to compile libvirt."
+	echo "You must have libtool installed to compile libvirt-qmf."
 	echo "Download the appropriate package for your distribution,"
 	echo "or see http://www.gnu.org/software/libtool"
 	DIE=1
@@ -28,7 +28,7 @@ DIE=0
 (automake --version) < /dev/null > /dev/null 2>&1 || {
 	echo
 	DIE=1
-	echo "You must have automake installed to compile libvirt."
+	echo "You must have automake installed to compile libvirt-qmf."
 	echo "Download the appropriate package for your distribution,"
 	echo "or see http://www.gnu.org/software/automake"
 }
@@ -38,7 +38,7 @@ if test "$DIE" -eq 1; then
 fi
 
 test -f src/NodeWrap.cpp || {
-	echo "You must run this script in the top-level libvirt directory"
+	echo "You must run this script in the top-level libvirt-qmf directory"
 	exit 1
 }
 
@@ -63,5 +63,5 @@ fi
 
 $srcdir/configure "$@" && {
     echo
-    echo "Now type 'make' to compile libvirt."
+    echo "Now type 'make' to compile libvirt-qmf."
 }
