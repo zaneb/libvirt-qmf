@@ -47,7 +47,7 @@ DomainWrap::DomainWrap(
 
     addData(_data);
 
-    printf("Initialised new domain object for %s\n", _domain_name.c_str());
+    mh_debug("Initialised new domain object for %s", _domain_name.c_str());
 }
 
 DomainWrap::~DomainWrap()
@@ -287,7 +287,7 @@ DomainWrap::migrate(qmf::AgentSession& session, qmf::AgentEvent& event)
     uint32_t flags(args["flags"]);
     uint32_t bandwidth(args["bandwidth"]);
 
-    printf ("calling migrate, new_dom_name: %s, uri: %s, flags: %d (live is %d)\n",
+    mh_debug("calling migrate, new_dom_name: %s, uri: %s, flags: %d (live is %d)",
             new_dom_name ? new_dom_name : "NULL",
             uri ? uri : "NULL",
             flags,

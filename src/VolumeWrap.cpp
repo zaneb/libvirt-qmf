@@ -58,7 +58,7 @@ VolumeWrap::VolumeWrap(PoolWrap *parent,
 
     addData(_data);
 
-    printf("done\n");
+    mh_debug("Initialised Volume");
 }
 
 void
@@ -108,12 +108,12 @@ VolumeWrap::checkForLVMPool()
                 if (name && path) {
                     virStorageVolPtr vol;
 
-                    printf ("xml returned device name %s, path %s; volume path is %s\n", name, path, _volume_path.c_str());
+                    mh_debug("xml returned device name %s, path %s; volume path is %s", name, path, _volume_path.c_str());
                     vol = virStorageVolLookupByPath(_conn, (char *) path);
                     if (vol != NULL) {
                         real_path = virStorageVolGetPath(vol);
                         if (real_path && strcmp(real_path, _volume_path.c_str()) == 0) {
-                            printf ("found matching storage volume associated with pool!\n");
+                            mh_debug("Found matching storage volume associated with pool");
                             _lvm_name.assign((char *) name);
                             _has_lvm_child = true;
                         }
@@ -136,7 +136,7 @@ VolumeWrap::update()
     virStorageVolInfo info;
     int ret;
 
-    printf("Updating volume info\n");
+    mh_debug("Updating volume info");
 
     ret = virStorageVolGetInfo(_volume_ptr, &info);
     if (ret < 0) {

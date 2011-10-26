@@ -2,6 +2,9 @@
 #define LIBVIRT_AGENT_H
 
 #include <matahari/agent.h>
+extern "C" {
+#include <matahari/logging.h>
+}
 #include "QmfPackage.h"
 #include "ManagedObject.h"
 

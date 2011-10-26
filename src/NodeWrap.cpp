@@ -172,10 +172,10 @@ void NodeWrap::syncDomains(void)
                 DomainWrap *domain;
                 try {
                     domain = new DomainWrap(this, domain_ptr, _conn);
-                    printf("Created new domain: %s, ptr is %p\n", dnames[i], domain_ptr);
+                    mh_debug("Created new domain: %s, ptr is %p", dnames[i], domain_ptr);
                     _domains.push_back(domain);
                 } catch (int i) {
-                    printf("Error constructing domain\n");
+                    mh_err("Error constructing domain");
                     REPORT_ERR(_conn, "constructing domain.");
                     delete domain;
                 }
@@ -198,7 +198,7 @@ void NodeWrap::syncDomains(void)
         ids = (int *) malloc(sizeof(int *) * maxids);
 
         if ((maxids = virConnectListDomains(_conn, ids, maxids)) < 0) {
-            printf("Error getting list of defined domains\n");
+            mh_err("Error getting list of defined domains");
             return;
         }
 
@@ -234,10 +234,10 @@ void NodeWrap::syncDomains(void)
             DomainWrap *domain;
             try {
                 domain = new DomainWrap(this, domain_ptr, _conn);
-                printf("Created new domain: %d, ptr is %p\n", ids[i], domain_ptr);
+                mh_debug("Created new domain: %d, ptr is %p", ids[i], domain_ptr);
                 _domains.push_back(domain);
             } catch (int i) {
-                printf("Error constructing domain\n");
+                mh_err("Error constructing domain");
                 REPORT_ERR(_conn, "constructing domain.");
                 delete domain;
             }
@@ -249,7 +249,7 @@ void NodeWrap::syncDomains(void)
     /* Go through our list of domains and ensure that they still exist. */
     DomainList::iterator iter = _domains.begin();
     while (iter != _domains.end()) {
-        printf("verifying domain %s\n", (*iter)->name().c_str());
+        mh_debug("verifying domain %s", (*iter)->name().c_str());
         virDomainPtr ptr = virDomainLookupByUUIDString(_conn, (*iter)->uuid().c_str());
         if (ptr == NULL) {
             REPORT_ERR(_conn, "virDomainLookupByUUIDString");
@@ -283,14 +283,14 @@ void NodeWrap::checkPool(char *pool_name)
     if (!pool_ptr) {
         REPORT_ERR(_conn, "virStoragePoolLookupByName");
     } else {
-        printf("Creating new pool: %s, ptr is %p\n", pool_name, pool_ptr);
+        mh_debug("Creating new pool: %s, ptr is %p", pool_name, pool_ptr);
         PoolWrap *pool;
         try {
             pool = new PoolWrap(this, pool_ptr, _conn);
-            printf("Created new pool: %s, ptr is %p\n", pool_name, pool_ptr);
+            mh_debug("Created new pool: %s, ptr is %p", pool_name, pool_ptr);
             _pools.push_back(pool);
         } catch (int i) {
-            printf("Error constructing pool\n");
+            mh_err("Error constructing pool");
             REPORT_ERR(_conn, "constructing pool.");
             delete pool;
         }
@@ -340,10 +340,10 @@ void NodeWrap::syncPools(void)
     /* Go through our list of pools and ensure that they still exist. */
     PoolList::iterator iter = _pools.begin();
     while (iter != _pools.end()) {
-        printf("Verifying pool %s\n", (*iter)->name().c_str());
+        mh_debug("Verifying pool %s", (*iter)->name().c_str());
         virStoragePoolPtr ptr = virStoragePoolLookupByUUIDString(_conn, (*iter)->uuid().c_str());
         if (ptr == NULL) {
-            printf("Destroying pool %s\n", (*iter)->name().c_str());
+            mh_info("Destroying pool %s", (*iter)->name().c_str());
             delete(*iter);
             iter = _pools.erase(iter);
         } else {
@@ -402,7 +402,7 @@ NodeWrap::domainDefineXML(qmf::AgentSession& session,
             // should destroy the old domain reference. The other option would
             // be to replace it and keep the object valid... not sure which is
             // better.
-            printf("Old domain already exists, removing it in favor of new object.");
+            mh_info("Old domain already exists, removing it in favor of new object.");
             delete(*iter);
             iter = _domains.erase(iter);
         } else {

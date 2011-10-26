@@ -76,9 +76,9 @@ PoolWrap::PoolWrap(NodeWrap *parent,
                         virStorageVolPtr vol;
                         vol = virStorageVolLookupByPath(_conn, (char *) path);
                         if (vol != NULL) {
-                            printf ("found storage volume associated with pool!\n");
+                            mh_debug("found storage volume associated with pool");
                             parent_volume = virStorageVolGetPath(vol);
-                            printf ("xml returned device name %s, path %s; volume path is %s\n", name, path, parent_volume);
+                            mh_debug("xml returned device name %s, path %s; volume path is %s", name, path, parent_volume);
                         }
                     }
                     xmlFree(path);
@@ -198,10 +198,10 @@ PoolWrap::syncVolumes()
                 VolumeWrap *volume = NULL;
                 try {
                     VolumeWrap *volume = new VolumeWrap(this, vol_ptr, _conn);
-                    printf("Created new volume: %s, ptr is %p\n", volume_name, vol_ptr);
+                    mh_debug("Created new volume: %s, ptr is %p", volume_name, vol_ptr);
                     _volumes.push_back(volume);
                 } catch (int i) {
-                    printf ("Error constructing volume\n");
+                    mh_err("Error constructing volume");
                     REPORT_ERR(_conn, "constructing volume.");
                     if (volume) {
                         delete volume;
@@ -219,10 +219,10 @@ PoolWrap::syncVolumes()
     /* Go through our list of volumes and ensure that they still exist. */
     VolumeList::iterator iter = _volumes.begin();
     while (iter != _volumes.end()) {
-        printf ("Verifying volume %s\n", (*iter)->name());
+        mh_debug("Verifying volume %s", (*iter)->name());
         virStorageVolPtr ptr = virStorageVolLookupByName(_pool_ptr, (*iter)->name());
         if (ptr == NULL) {
-            printf("Destroying volume %s\n", (*iter)->name());
+            mh_info("Destroying volume %s", (*iter)->name());
             delete(*iter);
             iter = _volumes.erase(iter);
         } else {
